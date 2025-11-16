@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import Sidebar from '../../components/Sidebar';
 import ChatInterface from '../../components/ChatInterface';
 import DocumentUpload from '../../components/DocumentUpload';
-import { Message, Chat, Document, chatAPI, ragAPI, documentAPI, setAuthTokenGetter } from '../../services/api';
+import { Message, Document, Source, chatAPI, documentAPI, setAuthTokenGetter } from '../../services/api';
 
 export default function ChatPage() {
   const { user, signOut, getToken } = useAuth();
@@ -83,7 +83,7 @@ export default function ChatPage() {
           const allDocuments = await documentAPI.listDocuments();
           // Filter to get only the documents that were used in this session
           const sessionDocuments = allDocuments.filter(doc => 
-            session.document_ids.includes(doc.file_id)
+            session.document_ids?.includes(doc.file_id) || false
           );
           console.log('Auto-selecting documents for session:', sessionDocuments.length);
           setSelectedDocuments(sessionDocuments);
@@ -160,12 +160,13 @@ export default function ChatPage() {
       
       // Add AI response to UI
       if (result.ragResponse) {
+        const ragResponse = result.ragResponse as { response: string; sources?: Source[] };
         const assistantMessage: Message = {
           id: (Date.now() + 1).toString(),
-          content: result.ragResponse.response,
+          content: ragResponse.response,
           role: 'assistant',
           timestamp: new Date().toISOString(),
-          sources: result.ragResponse.sources || []
+          sources: ragResponse.sources || []
         };
         
         setMessages(prev => [...prev, assistantMessage]);
@@ -227,7 +228,8 @@ export default function ChatPage() {
   const handleDocumentUpload = async (file: File) => {
     try {
       await documentAPI.uploadPDF(file);
-      await ragAPI.processDocument(file);
+      // Process document through document API
+      await documentAPI.uploadPDF(file);
     } catch (error) {
       console.error('Error uploading document:', error);
     }

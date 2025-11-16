@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Message, Source, ragAPI } from '../services/api';
+import { Message } from '../services/api';
 
 interface ChatInterfaceProps {
   messages: Message[];
@@ -250,8 +250,10 @@ export default function ChatInterface({ messages, onSendMessage, isLoading }: Ch
                 </summary>
                 <div className="mt-3 space-y-2">
                   {message.sources.map((source, index) => {
-                    const filename = source?.metadata?.filename || (source as any)?.filename || 'Unknown';
-                    const page = source?.metadata?.chunk_index || (source as any)?.page || 'N/A';
+                    // Handle different source object structures
+                    const sourceObj = source as { metadata?: { filename?: string; chunk_index?: number }; filename?: string; page?: number };
+                    const filename = sourceObj?.metadata?.filename || sourceObj?.filename || 'Unknown';
+                    const page = sourceObj?.metadata?.chunk_index || sourceObj?.page || 'N/A';
                     
                     return (
                       <div key={index} className="card p-3 rounded-lg border border-slate-600/30">

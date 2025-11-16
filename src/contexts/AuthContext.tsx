@@ -1,7 +1,8 @@
 import React from 'react'
+import { User } from 'firebase/auth'
 
 interface AuthContextType {
-  user: any | null
+  user: User | null
   loading: boolean
   signIn: (email: string, password: string) => Promise<void>
   signUp: (email: string, password: string) => Promise<void>

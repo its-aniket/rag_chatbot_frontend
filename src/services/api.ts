@@ -150,7 +150,12 @@ export const documentAPI = {
       // Backend returns { documents: [...], total: number }
       if (result && result.documents && Array.isArray(result.documents)) {
         console.log('User documents found:', result.documents.length);
-        return result.documents.map((doc: any) => ({
+        return result.documents.map((doc: {
+          file_id?: string;
+          filename: string;
+          size_bytes: number;
+          uploaded_at: number;
+        }) => ({
           file_id: doc.file_id || '',
           filename: doc.filename,
           file_type: 'pdf',
@@ -182,7 +187,7 @@ export const documentAPI = {
 
 // RAG Pipeline API (User-Isolated)
 export const ragAPI = {
-  processDocument: async (file: File): Promise<any> => {
+  processDocument: async (file: File): Promise<Document> => {
     // This is now handled by documentAPI.uploadPDF
     return documentAPI.uploadPDF(file);
   },
@@ -225,7 +230,7 @@ export const ragAPI = {
     return response.json();
   },
 
-  health: async (): Promise<any> => {
+  health: async (): Promise<{ status: string; message?: string }> => {
     const response = await fetch(`${API_BASE_URL}/rag/health`);
     if (!response.ok) throw new Error('RAG health check failed');
     return response.json();
@@ -284,7 +289,7 @@ export const chatAPI = {
       const sessions = await response.json();
       
       // Convert API response to Chat interface format
-      const chatSessions: Chat[] = sessions.map((session: any) => ({
+      const chatSessions: Chat[] = sessions.map((session: { session_id: string; title: string; created_at: string; updated_at: string; is_active: boolean; message_count: number }) => ({
         session_id: session.session_id,
         title: session.title,
         created_at: session.created_at,
@@ -325,7 +330,7 @@ export const chatAPI = {
       let messages: Message[] = [];
       if (messagesResponse.ok) {
         const sessionData = await messagesResponse.json();
-        messages = sessionData.messages.map((msg: any) => ({
+        messages = sessionData.messages.map((msg: { id: number; type: string; content: string; timestamp: string; sources?: Source[] }) => ({
           id: msg.id.toString(),
           role: msg.type as 'user' | 'assistant',
           content: msg.content,
@@ -341,7 +346,7 @@ export const chatAPI = {
     }
   },
 
-  sendMessage: async (sessionId: string, message: string, documentIds?: string[]): Promise<any> => {
+  sendMessage: async (sessionId: string, message: string, documentIds?: string[]): Promise<{ userMessage: Message; aiMessage: Message; ragResponse?: unknown; error?: string }> => {
     try {
       const headers = await getAuthHeaders();
       
@@ -407,7 +412,7 @@ export const chatAPI = {
         return {
           userMessage,
           aiMessage: fallbackMessage,
-          error: ragError
+          error: ragError?.toString()
         };
       }
     } catch (error) {
@@ -470,7 +475,7 @@ export const chatAPI = {
       
       if (message.role === 'user') {
         // Send user message and get AI response
-        const result = await chatAPI.sendMessage(sessionId, message.content);
+        await chatAPI.sendMessage(sessionId, message.content);
         
         // Return the user message (the AI response is automatically added by the backend)
         return {
