@@ -1,6 +1,6 @@
 // Import the functions you need from the SDKs you need
-import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
+import { getAuth, Auth } from 'firebase/auth';
 
 // Your web app's Firebase configuration
 // For Firebase JS SDK v9-compat and later, measurementId is optional
@@ -14,9 +14,34 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
+// Validate that required environment variables are present
+const requiredEnvVars = [
+  'NEXT_PUBLIC_FIREBASE_API_KEY',
+  'NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN', 
+  'NEXT_PUBLIC_FIREBASE_PROJECT_ID'
+];
 
-// Initialize Firebase Authentication and get a reference to the service
-export const auth = getAuth(app);
+const missingEnvVars = requiredEnvVars.filter(
+  envVar => !process.env[envVar]
+);
+
+if (missingEnvVars.length > 0 && typeof window !== 'undefined') {
+  console.error('Missing required Firebase environment variables:', missingEnvVars);
+}
+
+// Initialize Firebase only if we have the required config and are in browser
+let app: FirebaseApp | null;
+let auth: Auth | null;
+
+if (typeof window !== 'undefined' && missingEnvVars.length === 0) {
+  // Initialize Firebase only in the browser with valid config
+  app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+  auth = getAuth(app);
+} else {
+  // Provide fallbacks for SSR or missing config
+  app = null;
+  auth = null;
+}
+
+export { auth };
 export default app;
