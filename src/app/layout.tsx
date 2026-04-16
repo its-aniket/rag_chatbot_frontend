@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { AuthProvider } from "../contexts/AuthProvider";
 import "./globals.css";
 
@@ -7,7 +7,11 @@ export const metadata: Metadata = {
   description: "Modern AI-powered chatbot with advanced document retrieval and analysis capabilities. Upload PDFs and get intelligent answers from your documents.",
   keywords: "AI, chatbot, RAG, document search, artificial intelligence, PDF analysis",
   authors: [{ name: "RAG Chatbot Team" }],
-  viewport: "width=device-width, initial-scale=1",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
   themeColor: "#0f172a",
 };
 

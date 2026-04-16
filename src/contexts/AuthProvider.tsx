@@ -10,7 +10,7 @@ import {
   GoogleAuthProvider,
   signInWithPopup
 } from 'firebase/auth'
-import { auth } from '../firebase'
+import { getFirebaseAuth } from '../firebase'
 import { AuthContext } from './AuthContext'
 
 interface AuthProviderProps {
@@ -22,6 +22,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    const auth = getFirebaseAuth()
+    
     if (!auth) {
       setLoading(false)
       return
@@ -36,21 +38,25 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   }, [])
 
   const signIn = async (email: string, password: string) => {
+    const auth = getFirebaseAuth()
     if (!auth) throw new Error('Firebase not initialized')
     await signInWithEmailAndPassword(auth, email, password)
   }
 
   const signUp = async (email: string, password: string) => {
+    const auth = getFirebaseAuth()
     if (!auth) throw new Error('Firebase not initialized')
     await createUserWithEmailAndPassword(auth, email, password)
   }
 
   const signOut = async () => {
+    const auth = getFirebaseAuth()
     if (!auth) throw new Error('Firebase not initialized')
     await firebaseSignOut(auth)
   }
 
   const signInWithGoogle = async () => {
+    const auth = getFirebaseAuth()
     if (!auth) throw new Error('Firebase not initialized')
     const provider = new GoogleAuthProvider()
     await signInWithPopup(auth, provider)
@@ -80,7 +86,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   return (
     <AuthContext.Provider value={value}>
-      {!loading && children}
+      {loading ? (
+        <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0f172a' }}>
+          <div style={{ textAlign: 'center', color: '#94a3b8' }}>
+            <div style={{
+              width: 40, height: 40, border: '3px solid #334155',
+              borderTopColor: '#3b82f6', borderRadius: '50%',
+              animation: 'spin 0.8s linear infinite', margin: '0 auto 12px'
+            }} />
+            <p style={{ fontSize: 14 }}>Loading...</p>
+          </div>
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        </div>
+      ) : children}
     </AuthContext.Provider>
   )
 }

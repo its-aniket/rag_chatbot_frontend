@@ -2,46 +2,70 @@
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getAuth, Auth } from 'firebase/auth';
 
-// Your web app's Firebase configuration
-// For Firebase JS SDK v9-compat and later, measurementId is optional
-const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
+// Lazy initialization variables
+let app: FirebaseApp | null = null;
+let auth: Auth | null = null;
+let initializationAttempted = false;
+
+// Initialize Firebase function
+const initializeFirebase = (): { app: FirebaseApp | null; auth: Auth | null } => {
+  if (initializationAttempted) {
+    return { app, auth };
+  }
+  
+  initializationAttempted = true;
+  
+  // Only initialize on client side
+  if (typeof window === 'undefined') {
+    return { app: null, auth: null };
+  }
+  
+  // Your web app's Firebase configuration
+  const firebaseConfig = {
+    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+    authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+    appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+    measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
+  };
+
+  // Validate required config
+  if (!firebaseConfig.apiKey || !firebaseConfig.authDomain || !firebaseConfig.projectId) {
+    console.warn('Firebase configuration incomplete:', {
+      hasApiKey: !!firebaseConfig.apiKey,
+      hasAuthDomain: !!firebaseConfig.authDomain,
+      hasProjectId: !!firebaseConfig.projectId,
+    });
+    return { app: null, auth: null };
+  }
+
+  try {
+    // Initialize Firebase
+    app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+    auth = getAuth(app);
+    console.log('Firebase initialized successfully');
+  } catch (error) {
+    console.error('Firebase initialization failed:', error);
+    app = null;
+    auth = null;
+  }
+  
+  return { app, auth };
 };
 
-// Validate that required environment variables are present
-const requiredEnvVars = [
-  'NEXT_PUBLIC_FIREBASE_API_KEY',
-  'NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN', 
-  'NEXT_PUBLIC_FIREBASE_PROJECT_ID'
-];
+// Export getter functions instead of direct exports
+export const getFirebaseApp = (): FirebaseApp | null => {
+  const { app } = initializeFirebase();
+  return app;
+};
 
-const missingEnvVars = requiredEnvVars.filter(
-  envVar => !process.env[envVar]
-);
+export const getFirebaseAuth = (): Auth | null => {
+  const { auth } = initializeFirebase();
+  return auth;
+};
 
-if (missingEnvVars.length > 0 && typeof window !== 'undefined') {
-  console.error('Missing required Firebase environment variables:', missingEnvVars);
-}
-
-// Initialize Firebase only if we have the required config and are in browser
-let app: FirebaseApp | null;
-let auth: Auth | null;
-
-if (typeof window !== 'undefined' && missingEnvVars.length === 0) {
-  // Initialize Firebase only in the browser with valid config
-  app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-  auth = getAuth(app);
-} else {
-  // Provide fallbacks for SSR or missing config
-  app = null;
-  auth = null;
-}
-
-export { auth };
-export default app;
+// For backward compatibility
+export { getFirebaseAuth as auth };
+export default getFirebaseApp();

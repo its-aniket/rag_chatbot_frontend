@@ -1,9 +1,29 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || (
-  process.env.NODE_ENV === 'production' 
-    ? 'https://your-vercel-app.vercel.app/api'  // Replace with your actual Vercel domain
-    : 'http://localhost:8000'
-);
+// Determine API base URL. Prefer `NEXT_PUBLIC_API_URL` when set (e.g., for devtunnels).
+// When not set and running in the browser on a remote host (devtunnel),
+// default to the same hostname with backend port 8000 so requests reach the dev machine.
+const computeDefaultApiBase = () => {
+  try {
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname;
+      const protocol = window.location.protocol;
 
+      // If we're served from a remote host (devtunnel) use that host with backend port 8000
+      if (hostname && hostname !== 'localhost' && hostname !== '127.0.0.1') {
+        return `${protocol}//${hostname}:8000`;
+      }
+      // Otherwise (local development), use localhost backend
+      return 'http://localhost:8000';
+    }
+  } catch (e) {
+    // Fall back to localhost if anything goes wrong
+  }
+  // Default server-side / build-time fallback
+  return process.env.NODE_ENV === 'production'
+    ? 'https://your-vercel-app.vercel.app'
+    : 'http://localhost:8000';
+};
+
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || computeDefaultApiBase();
 console.log('API Base URL:', API_BASE_URL);
 
 // Global auth token getter - will be set by the app
@@ -14,7 +34,7 @@ export const setAuthTokenGetter = (tokenGetter: () => Promise<string | null>) =>
 };
 
 // Helper function to create authenticated headers
-const getAuthHeaders = async (): Promise<Record<string, string>> => {
+export const getAuthHeaders = async (): Promise<Record<string, string>> => {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
@@ -24,15 +44,17 @@ const getAuthHeaders = async (): Promise<Record<string, string>> => {
       const token = await getAuthToken();
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;
-        console.log('🔐 Using authentication token');
+        console.log('🔐 Using authentication token (length:', token.length, 'chars)');
+        // Log first and last few characters for debugging (without exposing full token)
+        console.log('🔐 Token preview:', token.substring(0, 10) + '...' + token.substring(token.length - 10));
       } else {
-        console.log('⚠️ No authentication token available');
+        console.log('⚠️ No authentication token available - user may not be signed in');
       }
     } else {
-      console.log('⚠️ No auth token getter configured, using unauthenticated request');
+      console.log('⚠️ No auth token getter configured - this will cause authentication errors');
     }
   } catch (error) {
-    console.error('Error getting auth token:', error);
+    console.error('❌ Error getting auth token:', error);
     // Continue with request even if auth fails
   }
   
@@ -133,14 +155,22 @@ export const documentAPI = {
 
   listDocuments: async (): Promise<Document[]> => {
     try {
-      console.log('Fetching user documents from:', `${API_BASE_URL}/documents/list`);
+      console.log('🔍 Fetching user documents from:', `${API_BASE_URL}/documents/list`);
       const headers = await getAuthHeaders();
+      console.log('🔐 Auth headers prepared for documents request');
+      
       const response = await fetch(`${API_BASE_URL}/documents/list`, { headers });
-      console.log('Documents response status:', response.status);
+      console.log('📡 Documents response status:', response.status);
       
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('List documents error:', errorText);
+        console.error('❌ List documents error:', errorText);
+        
+        if (response.status === 401) {
+          console.error('🚫 Authentication failed - user may need to sign in again');
+          console.error('💡 Tip: Make sure you\'re signed in with the same account on this device');
+        }
+        
         throw new Error(`Failed to fetch documents: ${response.status} - ${errorText}`);
       }
       
@@ -211,6 +241,54 @@ export const ragAPI = {
     return response.json();
   },
 
+  searchLLMStream: async (
+    query: string,
+    documentIds?: string[],
+    topK: number = 5,
+    onToken: (token: string) => void = () => {},
+    onSources: (sources: Source[]) => void = () => {},
+    onDone: () => void = () => {},
+    onError: (msg: string) => void = () => {},
+  ): Promise<void> => {
+    const authHeaders = await getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/rag/search-llm-stream`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({ query, document_ids: documentIds, top_k: topK }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Stream request failed: ${response.status} - ${text}`);
+    }
+
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';   // keep incomplete last line
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        try {
+          const event = JSON.parse(line.slice(6));
+          if (event.type === 'token')   onToken(event.content);
+          if (event.type === 'sources') onSources(event.sources);
+          if (event.type === 'done')    onDone();
+          if (event.type === 'error')   onError(event.message);
+        } catch {
+          // malformed line — skip
+        }
+      }
+    }
+  },
+
   searchLLM: async (query: string, documentIds?: string[], topK: number = 5): Promise<SearchResponse> => {
     const headers = await getAuthHeaders();
     const response = await fetch(`${API_BASE_URL}/rag/search-llm`, {
@@ -275,7 +353,10 @@ export const chatAPI = {
 
   getSessions: async (): Promise<Chat[]> => {
     try {
+      console.log('🔍 Fetching user chat sessions');
       const headers = await getAuthHeaders();
+      console.log('🔐 Auth headers prepared for sessions request');
+      
       const response = await fetch(`${API_BASE_URL}/chat/sessions`, {
         method: 'GET',
         headers,
@@ -283,6 +364,13 @@ export const chatAPI = {
 
       if (!response.ok) {
         const errorData = await response.json();
+        console.error('❌ Get sessions error:', errorData);
+        
+        if (response.status === 401) {
+          console.error('🚫 Authentication failed - user may need to sign in again');
+          console.error('💡 Tip: Make sure you\'re signed in with the same account on this device');
+        }
+        
         throw new Error(`Failed to get sessions: ${response.status} - ${JSON.stringify(errorData)}`);
       }
 
@@ -313,32 +401,38 @@ export const chatAPI = {
       
       const headers = await getAuthHeaders();
       
-      // Get session details
-      const sessions = await chatAPI.getSessions();
-      const session = sessions.find(s => s.session_id === sessionId);
-      
-      if (!session) {
-        throw new Error('Session not found');
-      }
-
-      // Get messages for session
+      // Get session details and messages in one call
       const messagesResponse = await fetch(`${API_BASE_URL}/chat/sessions/${sessionId}`, {
         method: 'GET',
         headers,
       });
 
-      let messages: Message[] = [];
-      if (messagesResponse.ok) {
-        const sessionData = await messagesResponse.json();
-        messages = sessionData.messages.map((msg: { id: number; type: string; content: string; timestamp: string; sources?: Source[] }) => ({
+      if (!messagesResponse.ok) {
+        const errorData = await messagesResponse.json();
+        throw new Error(`Session not found: ${messagesResponse.status} - ${JSON.stringify(errorData)}`);
+      }
+
+      const sessionData = await messagesResponse.json();
+
+      const session: Chat = {
+        session_id: sessionData.session_id,
+        title: sessionData.title,
+        created_at: sessionData.created_at || new Date().toISOString(),
+        updated_at: sessionData.updated_at || new Date().toISOString(),
+        is_active: true,
+        message_count: sessionData.messages?.length ?? 0,
+      };
+
+      const messages: Message[] = (sessionData.messages ?? []).map(
+        (msg: { id: number; type: string; content: string; timestamp: string; sources?: Source[] }) => ({
           id: msg.id.toString(),
           role: msg.type as 'user' | 'assistant',
           content: msg.content,
           timestamp: msg.timestamp,
-          sources: msg.sources || []
-        }));
-      }
-      
+          sources: msg.sources || [],
+        })
+      );
+
       return { session, messages };
     } catch (error) {
       console.error('Error fetching session:', error);

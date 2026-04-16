@@ -3,12 +3,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Message } from '../services/api';
 
-interface ChatInterfaceProps {
-  messages: Message[];
-  onSendMessage: (message: string) => void;
-  isLoading: boolean;
-}
-
 // Simple markdown parser for RAG responses
 const parseMarkdown = (text: string) => {
   if (!text) return text;
@@ -190,9 +184,10 @@ interface ChatInterfaceProps {
   messages: Message[];
   onSendMessage: (message: string) => void;
   isLoading: boolean;
+  streamingContent?: string;   // token-by-token content being streamed right now
 }
 
-export default function ChatInterface({ messages, onSendMessage, isLoading }: ChatInterfaceProps) {
+export default function ChatInterface({ messages, onSendMessage, isLoading, streamingContent }: ChatInterfaceProps) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -226,8 +221,8 @@ export default function ChatInterface({ messages, onSendMessage, isLoading }: Ch
     }
     
     return (
-      <div key={message.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-6 animate-slideInUp`}>
-        <div className={`max-w-4xl ${isUser ? 'message-user' : 'message-assistant'} rounded-2xl px-6 py-4 shadow-lg`}>
+      <div key={message.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4 sm:mb-6 animate-slideInUp`}>
+        <div className={`max-w-[85%] sm:max-w-3xl lg:max-w-4xl ${isUser ? 'message-user' : 'message-assistant'} rounded-2xl px-4 sm:px-6 py-3 sm:py-4 shadow-lg`}>
           <div className="text-white leading-relaxed font-medium">
             {isUser ? (
               <div className="whitespace-pre-wrap">{message.content || 'No content'}</div>
@@ -289,24 +284,38 @@ export default function ChatInterface({ messages, onSendMessage, isLoading }: Ch
   return (
     <div className="flex flex-col h-full bg-gradient-to-br from-slate-800 to-slate-900">
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-2">
+      <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 space-y-2">
         {messages.length === 0 ? (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center text-slate-400 max-w-2xl animate-fadeIn">
-              <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center">
-                <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="flex items-center justify-center h-full px-4">
+            <div className="text-center text-slate-400 max-w-lg sm:max-w-xl lg:max-w-2xl animate-fadeIn">
+              <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-4 sm:mb-6 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center">
+                <svg className="w-8 h-8 sm:w-10 sm:h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-3.582 8-8 8a8.001 8.001 0 01-7.025-4.09c-.203-.389-.155-.854.121-1.21L10.5 9.75l1.5-1.5L18 2.25l3-3-3 3z" />
                 </svg>
               </div>
-              <h2 className="text-3xl font-bold mb-4 gradient-text">Welcome to RAG Chatbot</h2>
-              <p className="text-lg mb-2">Start a conversation by typing a message below.</p>
+              <h2 className="text-2xl sm:text-3xl font-bold mb-3 sm:mb-4 gradient-text">Welcome to RAG Chatbot</h2>
+              <p className="text-base sm:text-lg mb-2">Start a conversation by typing a message below.</p>
               <p className="text-sm opacity-75">Upload documents to get AI-powered answers from your files.</p>
             </div>
           </div>
         ) : (
           <>
             {Array.isArray(messages) && messages.filter(msg => msg && msg.id).map(renderMessage)}
-            {isLoading && (
+
+            {/* Streaming bubble — shows while tokens are arriving */}
+            {isLoading && streamingContent && (
+              <div className="flex justify-start mb-4 sm:mb-6 animate-slideInUp">
+                <div className="max-w-[85%] sm:max-w-3xl lg:max-w-4xl message-assistant rounded-2xl px-4 sm:px-6 py-3 sm:py-4 shadow-lg">
+                  <div className="text-white leading-relaxed font-medium markdown-content">
+                    {parseMarkdown(streamingContent)}
+                    <span className="inline-block w-0.5 h-4 bg-blue-400 ml-0.5 animate-pulse align-middle" />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Thinking indicator — shows before first token arrives */}
+            {isLoading && !streamingContent && (
               <div className="flex justify-start mb-6 animate-slideInUp">
                 <div className="message-assistant rounded-2xl px-6 py-4 shadow-lg">
                   <div className="flex items-center space-x-1">
@@ -324,9 +333,9 @@ export default function ChatInterface({ messages, onSendMessage, isLoading }: Ch
       </div>
 
       {/* Input Area */}
-      <div className="border-t border-slate-700/50 bg-slate-900/50 backdrop-blur-sm p-6">
+      <div className="border-t border-slate-700/50 bg-slate-900/50 backdrop-blur-sm p-3 sm:p-4 md:p-6">
         <form onSubmit={handleSubmit} className="max-w-4xl mx-auto">
-          <div className="flex space-x-4 items-end">
+          <div className="flex space-x-2 sm:space-x-3 md:space-x-4 items-end">
             <div className="flex-1 relative">
               <textarea
                 value={input}
@@ -340,20 +349,20 @@ export default function ChatInterface({ messages, onSendMessage, isLoading }: Ch
                 placeholder="Type your message... (Shift + Enter for new line)"
                 disabled={isLoading}
                 rows={1}
-                className="w-full bg-slate-800/50 text-white border border-slate-600/50 rounded-2xl px-6 py-4 pr-14 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 disabled:opacity-50 transition-all duration-200 resize-none backdrop-blur-sm placeholder-slate-400"
+                className="w-full bg-slate-800/50 text-white border border-slate-600/50 rounded-2xl px-4 sm:px-5 md:px-6 py-3 sm:py-4 pr-12 sm:pr-14 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 disabled:opacity-50 transition-all duration-200 resize-none backdrop-blur-sm placeholder-slate-400 text-sm sm:text-base"
                 style={{
-                  minHeight: '56px',
+                  minHeight: '48px',
                   maxHeight: '200px',
                 }}
               />
-              <div className="absolute right-2 bottom-3">
+              <div className="absolute right-2 bottom-2 sm:bottom-3">
                 <button
                   type="submit"
                   disabled={!input.trim() || isLoading}
-                  className="btn-primary rotate-90 disabled:bg-gray-600 disabled:cursor-not-allowed text-white p-3 rounded-xl transition-all duration-200 group disabled:opacity-50"
+                  className="btn-primary rotate-90 disabled:bg-gray-600 disabled:cursor-not-allowed text-white p-2.5 sm:p-3 rounded-xl transition-all duration-200 group disabled:opacity-50"
                 >
                   <svg 
-                    className="w-5 h-5 icon group-hover:scale-110 transition-transform" 
+                    className="w-4 h-4 sm:w-5 sm:h-5 icon group-hover:scale-110 transition-transform" 
                     fill="none" 
                     stroke="currentColor" 
                     viewBox="0 0 24 24"
@@ -364,9 +373,10 @@ export default function ChatInterface({ messages, onSendMessage, isLoading }: Ch
               </div>
             </div>
           </div>
-          <div className="flex items-center justify-between mt-3 text-xs text-slate-500">
-            <div className="flex items-center gap-4">
-              <span>Press Enter to send • Shift + Enter for new line</span>
+          <div className="flex items-center justify-between mt-2 sm:mt-3 text-xs text-slate-500">
+            <div className="flex items-center gap-2 sm:gap-4">
+              <span className="hidden sm:block">Press Enter to send • Shift + Enter for new line</span>
+              <span className="sm:hidden">Enter to send • Shift+Enter for line</span>
             </div>
             {input.length > 0 && (
               <span className={`${input.length > 1000 ? 'text-yellow-400' : ''}`}>
