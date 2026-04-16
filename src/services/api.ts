@@ -14,7 +14,7 @@ const computeDefaultApiBase = () => {
       // Otherwise (local development), use localhost backend
       return 'http://localhost:8000';
     }
-  } catch (e) {
+  } catch {
     // Fall back to localhost if anything goes wrong
   }
   // Default server-side / build-time fallback

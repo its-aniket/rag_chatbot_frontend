@@ -1,12 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
-  
-  // Development optimizations
   devIndicators: {
-    buildActivity: true,
-    buildActivityPosition: 'bottom-right',
+    position: 'bottom-right',
   },
   
   // Webpack configuration

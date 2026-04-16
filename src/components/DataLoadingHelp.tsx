@@ -46,7 +46,7 @@ export default function DataLoadingHelp({ type, isEmpty }: DataLoadingHelpProps)
       <div className="text-xs text-blue-400">
         <p className="font-medium mb-1">💡 Using a different device?</p>
         <p className="text-slate-500">
-          Make sure you're signed in with the same account to see your {type} across devices.
+          Make sure you&apos;re signed in with the same account to see your {type} across devices.
         </p>
       </div>
     </div>
