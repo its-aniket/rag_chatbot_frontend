@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import Sidebar from '../../components/Sidebar';
 import ChatInterface from '../../components/ChatInterface';
 import DocumentUpload from '../../components/DocumentUpload';
-import { Message, Document, Chat, Source, chatAPI, documentAPI, ragAPI, setAuthTokenGetter, getAuthHeaders, API_BASE_URL } from '../../services/api';
+import { Message, Document, Chat, Source, chatAPI, documentAPI, ragAPI, setAuthTokenGetter } from '../../services/api';
 
 export default function ChatPage() {
   const { user, signOut, getToken } = useAuth();
@@ -146,7 +146,6 @@ export default function ChatPage() {
       }
     }
 
-    // Add user message to UI immediately
     const userMessage: Message = {
       id: Date.now().toString(),
       content: messageContent,
@@ -157,104 +156,54 @@ export default function ChatPage() {
     setIsLoading(true);
     setStreamingContent('');
 
-    // Persist user message to backend
-    try {
-      const headers = await getAuthHeaders();
-      await fetch(`${API_BASE_URL}/chat/sessions/${currentChatId}/messages`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ content: messageContent, message_type: 'user' }),
-      });
-    } catch (e) {
-      console.error('Failed to persist user message:', e);
-    }
-
     try {
       const selectedDocumentIds = selectedDocuments.map(doc => doc.file_id);
-      let accumulatedText = '';
-      let finalSources: Source[] = [];
+      const result = await chatAPI.sendMessage(currentChatId, messageContent, selectedDocumentIds);
+
       const isFirstMessage = messages.length === 0;
+      if (isFirstMessage && result.ragResponse) {
+        try {
+          const title = generateTitleFromMessage(messageContent);
+          await chatAPI.updateSessionTitle(currentChatId, title);
+          setCurrentChatTitle(title);
+          setChats(prev =>
+            prev.map(c => c.session_id === currentChatId ? { ...c, title } : c)
+          );
+        } catch (e) {
+          console.error('Failed to update session title:', e);
+        }
+      }
 
-      await ragAPI.searchLLMStream(
-        messageContent,
-        selectedDocumentIds,
-        5,
-        // onToken — append each token and update streaming bubble
-        (token) => {
-          accumulatedText += token;
-          setStreamingContent(accumulatedText);
-        },
-        // onSources
-        (sources) => { finalSources = sources; },
-        // onDone — move streamed content into the messages list
-        async () => {
-          setStreamingContent('');
-          setIsLoading(false);
-
-          const assistantMessage: Message = {
-            id: (Date.now() + 1).toString(),
-            content: accumulatedText,
-            role: 'assistant',
-            timestamp: new Date().toISOString(),
-            sources: finalSources,
-          };
-          setMessages(prev => [...prev, assistantMessage]);
-
-          // Persist assistant message to backend
-          try {
-            const headers = await getAuthHeaders();
-            await fetch(`${API_BASE_URL}/chat/sessions/${currentChatId}/messages`, {
-              method: 'POST',
-              headers,
-              body: JSON.stringify({
-                content: accumulatedText,
-                message_type: 'assistant',
-                sources: finalSources,
-              }),
-            });
-          } catch (e) {
-            console.error('Failed to persist assistant message:', e);
-          }
-
-          // Update session title on first message
-          if (isFirstMessage) {
-            try {
-              const title = generateTitleFromMessage(messageContent);
-              await chatAPI.updateSessionTitle(currentChatId!, title);
-              setCurrentChatTitle(title);
-              setChats(prev =>
-                prev.map(c => c.session_id === currentChatId ? { ...c, title } : c)
-              );
-            } catch (e) {
-              console.error('Failed to update session title:', e);
-            }
-          }
-        },
-        // onError
-        (errMsg) => {
-          setStreamingContent('');
-          setIsLoading(false);
-          setMessages(prev => [...prev, {
-            id: (Date.now() + 1).toString(),
-            content: `Sorry, I encountered an error: ${errMsg}`,
-            role: 'assistant',
-            timestamp: new Date().toISOString(),
-          }]);
-        },
-      );
+      if (result.ragResponse) {
+        const ragResponse = result.ragResponse as { response: string; sources?: Source[] };
+        setMessages(prev => [...prev, {
+          id: (Date.now() + 1).toString(),
+          content: ragResponse.response,
+          role: 'assistant',
+          timestamp: new Date().toISOString(),
+          sources: ragResponse.sources || [],
+        }]);
+      } else if (result.aiMessage) {
+        setMessages(prev => [...prev, {
+          id: (Date.now() + 1).toString(),
+          content: result.aiMessage.content,
+          role: 'assistant',
+          timestamp: new Date().toISOString(),
+          sources: result.aiMessage.sources || [],
+        }]);
+      }
     } catch (error) {
-      console.error('Error in streaming flow:', error);
-      setStreamingContent('');
-      setIsLoading(false);
+      console.error('Error in chat flow:', error);
       setMessages(prev => [...prev, {
         id: (Date.now() + 1).toString(),
         content: 'Sorry, I encountered an error. Please try again.',
         role: 'assistant',
         timestamp: new Date().toISOString(),
       }]);
+    } finally {
+      setIsLoading(false);
     }
   };
-
   const generateTitleFromMessage = (message: string): string => {
     const clean = message.trim();
     if (clean.length <= 50) return clean;
